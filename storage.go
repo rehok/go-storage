@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/goccy/go-json"
 )
 
@@ -14,6 +15,12 @@ type Storage interface {
 	Get(key string) (*GetValue, error)
 	Set(key string, val *SetValue) error
 	Delete(key string) error
+	ChunkInit() (string, error)
+	ChunkPart(uploadId string, partNumber int, reader io.Reader, size int64) (oss.UploadPart, error)
+	ChunkComplete(uploadId string, parts []oss.UploadPart) error
+	ChunkAbort(uploadId string) error
+	SetPath(path string, mores ...string)
+	GetPath() string
 }
 
 type SetValue struct {

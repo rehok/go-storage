@@ -3,6 +3,7 @@ package drivers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/platship/go-storage"
@@ -17,6 +18,7 @@ type Oss struct {
 	Bucket          string      `json:"bucket"`
 	Client          *oss.Client `json:"-"`
 	ClientBucket    *oss.Bucket `json:"-"`
+	FullPath        string      `json:"fullPath"` // 用于设置存储路径
 }
 
 func (o *Oss) Init() (err error) {
@@ -108,4 +110,45 @@ func (o *Oss) DeleteByPrefix(p string) error {
 		}
 	}
 	return nil
+}
+
+func (o *Oss) ChunkInit() (string, error) {
+	res, err := o.ClientBucket.InitiateMultipartUpload(o.FullPath)
+	if err != nil {
+		return "", err
+	}
+	return res.UploadID, nil
+}
+
+func (o *Oss) ChunkPart(uploadId string, partNumber int, reader io.Reader, size int64) (oss.UploadPart, error) {
+	initResult := oss.InitiateMultipartUploadResult{Key: o.FullPath, UploadID: uploadId}
+	// 注意: 这里我们无法确定 reader 的 size，OSS SDK 允许不传
+	part, err := o.ClientBucket.UploadPart(initResult, reader, size, partNumber)
+	if err != nil {
+		return oss.UploadPart{}, err
+	}
+	return part, nil
+}
+
+func (o *Oss) ChunkComplete(uploadId string, parts []oss.UploadPart) error {
+	initResult := oss.InitiateMultipartUploadResult{Key: o.FullPath, UploadID: uploadId}
+	_, err := o.ClientBucket.CompleteMultipartUpload(initResult, parts)
+	if err != nil {
+		_ = o.ClientBucket.AbortMultipartUpload(initResult)
+		return err
+	}
+	return nil
+}
+
+func (o *Oss) ChunkAbort(uploadId string) error {
+	initResult := oss.InitiateMultipartUploadResult{Key: o.FullPath, UploadID: uploadId}
+	return o.ClientBucket.AbortMultipartUpload(initResult)
+}
+
+func (o *Oss) SetPath(path string, mores ...string) {
+	o.FullPath = path
+}
+
+func (o *Oss) GetPath() string {
+	return o.FullPath
 }
